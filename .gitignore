@@ -1,0 +1,7 @@
+.vscode/
+.backup/
+.theia/
+__cmake_systeminformation/
+build/
+Debug/
+
