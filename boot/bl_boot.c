@@ -10,6 +10,7 @@
 #include "bl_jump.h"
 #include "bl_packet.h"
 #include "bl_protocol.h"
+#include "bl_state.h"
 #include "bl_time.h"
 #include "bl_transport.h"
 #include "bl_transport_packetizer.h"
@@ -22,6 +23,7 @@
  */
 
 #define BL_BOOT_TIMEOUT_MS             (3000UL)
+#define BL_BOOT_ASYNC_TX_DRAIN_MS      (250UL)
 
 #define BL_BOOT_RX_BUFFER_SIZE         (256UL)
 
@@ -252,6 +254,16 @@ static bool BL_BootSendResponse(
 static void BL_BootExecuteAction(
     BL_CommandAction_t action)
 {
+    if ((action != BL_COMMAND_ACTION_NONE) &&
+        ((BL_TransportGetType() == BL_TRANSPORT_SPI) ||
+         (BL_TransportGetType() == BL_TRANSPORT_I2C)))
+    {
+        uint32_t startTick = BL_TimeGetTick();
+        while (!BL_TimeTimeoutExpired(startTick, BL_BOOT_ASYNC_TX_DRAIN_MS))
+        {
+        }
+    }
+
     switch (action)
     {
         case BL_COMMAND_ACTION_RUN_APP:

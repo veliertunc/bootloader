@@ -2,6 +2,7 @@
 
 #include "bl_config.h"
 #include "bl_packet.h"
+#include "bl_transport_config.h"
 
 #include "driverlib/gpio.h"
 #include "driverlib/pin_map.h"
@@ -32,6 +33,11 @@
 
 #define BL_UART_RX_CONFIG            GPIO_PA0_U0RX
 #define BL_UART_TX_CONFIG            GPIO_PA1_U0TX
+
+#if BL_TRANSPORT == BL_TRANSPORT_ID_RS485
+#define BL_RS485_GPIO_BASE           GPIO_PORTB_BASE
+#define BL_RS485_DE_PIN              GPIO_PIN_4
+#endif
 
 /*
  * SOF is serialized little-endian.
@@ -131,6 +137,15 @@ bool BL_UART_Init(void)
      */
     SysCtlPeripheralEnable(
         BL_UART_PERIPHERAL_GPIO);
+
+#if BL_TRANSPORT == BL_TRANSPORT_ID_RS485
+    SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOB);
+    while (!SysCtlPeripheralReady(SYSCTL_PERIPH_GPIOB))
+    {
+    }
+    GPIOPinTypeGPIOOutput(BL_RS485_GPIO_BASE, BL_RS485_DE_PIN);
+    GPIOPinWrite(BL_RS485_GPIO_BASE, BL_RS485_DE_PIN, 0U);
+#endif
 
     while (!SysCtlPeripheralReady(
         BL_UART_PERIPHERAL_GPIO))
@@ -381,6 +396,10 @@ bool BL_UART_Transmit(
         return true;
     }
 
+#if BL_TRANSPORT == BL_TRANSPORT_ID_RS485
+    GPIOPinWrite(BL_RS485_GPIO_BASE, BL_RS485_DE_PIN, BL_RS485_DE_PIN);
+#endif
+
     for (index = 0UL; index < length; ++index)
     {
         UARTCharPut(
@@ -398,6 +417,37 @@ bool BL_UART_Transmit(
     {
     }
 
+#if BL_TRANSPORT == BL_TRANSPORT_ID_RS485
+    GPIOPinWrite(BL_RS485_GPIO_BASE, BL_RS485_DE_PIN, 0U);
+#endif
+
+    return true;
+}
+
+bool BL_UART_Receive(
+    uint8_t *buffer,
+    uint32_t bufferSize,
+    uint32_t *receivedLength)
+{
+    uint32_t count = 0U;
+
+    if ((buffer == NULL) || (receivedLength == NULL) ||
+        (bufferSize == 0U))
+    {
+        return false;
+    }
+
+    *receivedLength = 0U;
+    while ((count < bufferSize) && UARTCharsAvail(BL_UART_BASE))
+    {
+        int32_t value = UARTCharGetNonBlocking(BL_UART_BASE);
+        if (value < 0)
+        {
+            break;
+        }
+        buffer[count++] = (uint8_t)value;
+    }
+    *receivedLength = count;
     return true;
 }
 

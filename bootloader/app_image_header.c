@@ -1,5 +1,6 @@
 #include <stdint.h>
 
+#include "bl_config.h"
 #include "bl_image.h"
 
 /*
@@ -24,7 +25,10 @@ const BL_ImageHeader_t g_applicationImageHeader =
     .magic =
         BL_IMAGE_MAGIC,
     
-    .version =
+    .headerVersion =
+        0x00010000UL,
+
+    .imageVersion =
         0x00010000UL,
 
     .imageSize =
@@ -40,9 +44,6 @@ const BL_ImageHeader_t g_applicationImageHeader =
         0UL,
 
     .reserved2 =
-        0UL
-
-    .reserved3 =
         0UL
 
 };

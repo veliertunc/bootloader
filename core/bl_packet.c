@@ -1,5 +1,6 @@
 #include "bl_packet.h"
 
+#include <stddef.h>
 #include <stdint.h>
 #include <stdbool.h>
 

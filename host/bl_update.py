@@ -16,6 +16,8 @@ from bl_protocol import (
     IMAGE_HEADER_SIZE,
     APPLICATION_ADDRESS,
 )
+from bl_i2c_transport import I2CTransport
+from bl_transport import BootloaderTransport
 
 
 IMAGE_MAGIC = 0x544D3443
@@ -181,23 +183,37 @@ def print_progress(
 
 
 def update(
-    port: str,
+    port: str | None,
     image_path: Path,
+    ethernet_host: str | None = None,
+    ethernet_port: int = 5000,
+    i2c_bus: int | None = None,
+    transport: BootloaderTransport | None = None,
 ) -> None:
 
     header, application = read_image(
         image_path
     )
+    _, _, _, image_size, image_crc, _, _, _ = struct.unpack("<8I", header)
 
     print()
-    print(
-        f"Opening {port} @ 115200..."
-    )
+    selected_transport = transport
+    if transport is not None:
+        print("Opening SPI transport...")
+    elif i2c_bus is not None:
+        print(f"Opening I2C bus {i2c_bus} at slave address 0x42...")
+        selected_transport = I2CTransport(bus=i2c_bus)
+    elif ethernet_host is not None:
+        print(f"Opening W5500 UDP at {ethernet_host}:{ethernet_port}...")
+    else:
+        print(f"Opening {port} @ 115200...")
 
     with BootloaderProtocol(
-        port=port,
+        port=selected_transport if selected_transport is not None else port,
         baudrate=115200,
         timeout=1.0,
+        ethernet_host=ethernet_host,
+        ethernet_port=ethernet_port,
     ) as bl:
 
         print("Connecting...")
@@ -290,7 +306,7 @@ def update(
         print()
         print("Verifying application...")
 
-        bl.verify()
+        bl.verify(image_size, image_crc)
 
         print("Verification successful.")
 
@@ -303,6 +319,7 @@ def update(
         except (
             serial.SerialException,
             BootloaderError,
+            OSError,
         ):
             # RUN_APP causes the MCU to leave the bootloader.
             # Losing the response is acceptable if the target has
@@ -319,7 +336,7 @@ def update(
 def main() -> int:
 
     parser = argparse.ArgumentParser(
-        description="TM4C123 UART bootloader updater"
+        description="TM4C123 bootloader updater"
     )
 
     parser.add_argument(
@@ -330,6 +347,24 @@ def main() -> int:
     parser.add_argument(
         "--image",
         help="application_image.bin",
+    )
+
+    parser.add_argument(
+        "--ethernet",
+        help="W5500 target IPv4 address (default target is 192.168.1.50)",
+    )
+
+    parser.add_argument(
+        "--udp-port",
+        type=int,
+        default=5000,
+        help="W5500 bootloader UDP port (default: 5000)",
+    )
+
+    parser.add_argument(
+        "--i2c-bus",
+        type=int,
+        help="Linux I2C bus number (slave address 0x42)",
     )
 
     parser.add_argument(
@@ -344,8 +379,8 @@ def main() -> int:
         print_ports()
         return 0
 
-    if not args.port:
-        parser.error("--port is required")
+    if sum((bool(args.port), bool(args.ethernet), args.i2c_bus is not None)) != 1:
+        parser.error("specify exactly one of --port, --ethernet, or --i2c-bus")
 
     if not args.image:
         parser.error("--image is required")
@@ -364,6 +399,9 @@ def main() -> int:
         update(
             port=args.port,
             image_path=image_path,
+            ethernet_host=args.ethernet,
+            ethernet_port=args.udp_port,
+            i2c_bus=args.i2c_bus,
         )
 
     except (

@@ -4,6 +4,7 @@
 
 #include "bl_image.h"
 #include "bl_memory.h"
+#include "bl_config.h"
 
 #define BL_SCB_VTOR_ADDRESS           (0xE000ED08UL)
 

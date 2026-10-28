@@ -5,6 +5,7 @@
 
 #include "inc/hw_gpio.h"
 #include "inc/hw_memmap.h"
+#include "inc/hw_types.h"
 
 #include "driverlib/gpio.h"
 #include "driverlib/sysctl.h"
@@ -121,6 +122,14 @@ uint32_t Board_GetSystemClock(void)
     return g_systemClockHz;
 }
 
+void Board_Reset(void)
+{
+    SysCtlReset();
+    while (1)
+    {
+    }
+}
+
 bool Board_Sw1Pressed(void)
 {
     return GPIOPinRead(
@@ -168,13 +177,13 @@ void Board_LedToggle(uint8_t led)
     if (pin != 0U)
     {
         uint32_t current =
-            GPIOPinRead(
+            (uint32_t)GPIOPinRead(
                 GPIO_PORTF_BASE,
                 pin);
 
         GPIOPinWrite(
             GPIO_PORTF_BASE,
             pin,
-            current ^ pin);
+            (uint8_t)(current ^ (uint32_t)pin));
     }
 }

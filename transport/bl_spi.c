@@ -13,6 +13,8 @@
 #include "driverlib/sysctl.h"
 
 #include "bl_fifo.h"
+#include "bl_crc32.h"
+#include "bl_packet.h"
 #include "bl_time.h"
 #include "board.h"
 
@@ -39,6 +41,15 @@
 
 #define BL_SPI_INTERRUPT_FLAGS       \
     (BL_SPI_RX_INTERRUPT_FLAGS | BL_SPI_TX_INTERRUPT_FLAGS)
+
+#define BL_SPI_FRAME_HEADER_SIZE     (8UL)
+#define BL_SPI_FRAME_CRC_SIZE        (4UL)
+#define BL_SPI_FRAME_MAX_SIZE        \
+    (BL_SPI_FRAME_HEADER_SIZE + BL_PACKET_MAX_SIZE + BL_SPI_FRAME_CRC_SIZE)
+
+static const uint8_t g_spiFrameMagic[4] = {0x55U, 0xAAU, 0x55U, 0xAAU};
+static uint8_t g_spiFrameBuffer[BL_SPI_FRAME_MAX_SIZE * 2U];
+static uint32_t g_spiFrameLength;
 
 static uint8_t g_spiRxStorage[BL_SPI_RX_BUFFER_SIZE];
 static uint8_t g_spiTxStorage[BL_SPI_TX_BUFFER_SIZE];
@@ -142,10 +153,12 @@ static void BL_SPIFillHardwareTx(void)
      * SSIDataPutNonBlocking() returns zero when the hardware
      * TX FIFO cannot accept another word.
      */
-    while (BL_FIFO_Pop(
-        &g_spiTxFifo,
-        &value))
+    while ((SSIIntStatus(BL_SPI_SSI_BASE, false) & SSI_TXFF) != 0U)
     {
+        if (!BL_FIFO_Pop(&g_spiTxFifo, &value))
+        {
+            break;
+        }
         if (SSIDataPutNonBlocking(
             BL_SPI_SSI_BASE,
             (uint32_t)value) == 0)
@@ -239,6 +252,8 @@ bool BL_SPI_Init(void)
         &g_spiTxFifo,
         g_spiTxStorage,
         sizeof(g_spiTxStorage));
+
+    g_spiFrameLength = 0U;
 
     g_spiActivity = false;
     g_spiError = false;
@@ -336,6 +351,7 @@ void BL_SPI_DeInit(void)
 
     BL_FIFO_Reset(&g_spiRxFifo);
     BL_FIFO_Reset(&g_spiTxFifo);
+    g_spiFrameLength = 0U;
 
     g_spiInitialized = false;
     g_spiActivity = false;
@@ -347,37 +363,90 @@ bool BL_SPI_Receive(
     uint32_t bufferSize,
     uint32_t *receivedLength)
 {
-    uint32_t count;
     uint8_t value;
+    uint32_t offset = 0U;
 
-    if ((buffer == NULL) ||
-        (receivedLength == NULL))
+    if ((buffer == NULL) || (receivedLength == NULL) ||
+        (bufferSize == 0U) || !g_spiInitialized)
     {
         return false;
     }
-
-    if (bufferSize == 0U)
+    *receivedLength = 0U;
+    while (BL_FIFO_Pop(&g_spiRxFifo, &value))
     {
-        return false;
+        if (g_spiFrameLength < sizeof(g_spiFrameBuffer))
+        {
+            g_spiFrameBuffer[g_spiFrameLength++] = value;
+        }
+        else
+        {
+            g_spiFrameLength = 0U;
+            g_spiError = true;
+        }
     }
 
-    if (!g_spiInitialized)
+    while ((g_spiFrameLength - offset) >= 4U)
     {
-        return false;
+        uint32_t payloadLength;
+        uint32_t frameLength;
+        uint32_t calculatedCrc;
+        uint32_t receivedCrc;
+        uint32_t crcOffset;
+
+        if (memcmp(&g_spiFrameBuffer[offset], g_spiFrameMagic, 4U) != 0)
+        {
+            offset++;
+            continue;
+        }
+        if ((g_spiFrameLength - offset) < BL_SPI_FRAME_HEADER_SIZE)
+        {
+            break;
+        }
+        payloadLength = (uint32_t)g_spiFrameBuffer[offset + 4U] |
+                        ((uint32_t)g_spiFrameBuffer[offset + 5U] << 8U) |
+                        ((uint32_t)g_spiFrameBuffer[offset + 6U] << 16U) |
+                        ((uint32_t)g_spiFrameBuffer[offset + 7U] << 24U);
+        frameLength = BL_SPI_FRAME_HEADER_SIZE + payloadLength + BL_SPI_FRAME_CRC_SIZE;
+        if ((payloadLength > BL_PACKET_MAX_SIZE) ||
+            (frameLength > sizeof(g_spiFrameBuffer)))
+        {
+            offset++;
+            g_spiError = true;
+            continue;
+        }
+        if ((g_spiFrameLength - offset) < frameLength)
+        {
+            break;
+        }
+        crcOffset = offset + BL_SPI_FRAME_HEADER_SIZE + payloadLength;
+        calculatedCrc = BL_CRC32_Calculate(
+            &g_spiFrameBuffer[offset + BL_SPI_FRAME_HEADER_SIZE], payloadLength);
+        receivedCrc = (uint32_t)g_spiFrameBuffer[crcOffset] |
+                      ((uint32_t)g_spiFrameBuffer[crcOffset + 1U] << 8U) |
+                      ((uint32_t)g_spiFrameBuffer[crcOffset + 2U] << 16U) |
+                      ((uint32_t)g_spiFrameBuffer[crcOffset + 3U] << 24U);
+        if (calculatedCrc != receivedCrc)
+        {
+            offset++;
+            g_spiError = true;
+            continue;
+        }
+        if (payloadLength > bufferSize)
+        {
+            offset += frameLength;
+            g_spiError = true;
+            continue;
+        }
+        memcpy(buffer, &g_spiFrameBuffer[offset + BL_SPI_FRAME_HEADER_SIZE], payloadLength);
+        *receivedLength = payloadLength;
+        offset += frameLength;
+        break;
     }
-
-    count = 0U;
-
-    while ((count < bufferSize) &&
-           BL_FIFO_Pop(
-               &g_spiRxFifo,
-               &value))
+    if (offset != 0U)
     {
-        buffer[count] = value;
-        count++;
+        g_spiFrameLength -= offset;
+        memmove(g_spiFrameBuffer, &g_spiFrameBuffer[offset], g_spiFrameLength);
     }
-
-    *receivedLength = count;
 
     return true;
 }
@@ -388,9 +457,12 @@ bool BL_SPI_Transmit(
 {
     uint32_t index;
     uint32_t startTick;
+    uint32_t frameLength;
+    uint32_t crc;
+    uint8_t frame[BL_SPI_FRAME_MAX_SIZE];
 
-    if ((buffer == NULL) ||
-        (length == 0U))
+    if ((buffer == NULL) || (length == 0U) ||
+        (length > BL_PACKET_MAX_SIZE))
     {
         return false;
     }
@@ -400,19 +472,29 @@ bool BL_SPI_Transmit(
         return false;
     }
 
-    /*
-     * Wait for enough room in the software TX FIFO.
-     *
-     * The current common transport API is synchronous, so we
-     * don't return until the complete response has been queued.
-     */
+    frame[0] = 0x55U;
+    frame[1] = 0xAAU;
+    frame[2] = 0x55U;
+    frame[3] = 0xAAU;
+    frame[4] = (uint8_t)length;
+    frame[5] = (uint8_t)(length >> 8U);
+    frame[6] = (uint8_t)(length >> 16U);
+    frame[7] = (uint8_t)(length >> 24U);
+    memcpy(&frame[BL_SPI_FRAME_HEADER_SIZE], buffer, length);
+    crc = BL_CRC32_Calculate(buffer, length);
+    frame[BL_SPI_FRAME_HEADER_SIZE + length] = (uint8_t)crc;
+    frame[BL_SPI_FRAME_HEADER_SIZE + length + 1U] = (uint8_t)(crc >> 8U);
+    frame[BL_SPI_FRAME_HEADER_SIZE + length + 2U] = (uint8_t)(crc >> 16U);
+    frame[BL_SPI_FRAME_HEADER_SIZE + length + 3U] = (uint8_t)(crc >> 24U);
+    frameLength = BL_SPI_FRAME_HEADER_SIZE + length + BL_SPI_FRAME_CRC_SIZE;
+
     startTick = BL_TimeGetTick();
 
-    for (index = 0U; index < length; index++)
+    for (index = 0U; index < frameLength; index++)
     {
         while (!BL_FIFO_Push(
             &g_spiTxFifo,
-            buffer[index]))
+            frame[index]))
         {
             /*
              * The host must clock the SPI bus so that bytes

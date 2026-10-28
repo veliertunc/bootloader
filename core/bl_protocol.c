@@ -329,15 +329,12 @@ static bool BL_ProtocolHandleGetInfo(
     info.applicationStart = BL_APP_START_ADDRESS;
     info.applicationMaxSize = BL_APP_MAX_SIZE;
 
-    /*
-     * UART and CAN are currently implemented transports.
-     *
-     * SPI/I2C/USB capability bits can be enabled as each transport
-     * becomes production-ready.
-     */
     info.capabilities =
-        BL_CAPABILITY_UART |
-        BL_CAPABILITY_CAN;
+        BL_CAPABILITY_RS232 |
+        BL_CAPABILITY_RS485 |
+        BL_CAPABILITY_SPI |
+        BL_CAPABILITY_I2C |
+        BL_CAPABILITY_ETHERNET;
 
     BL_ProtocolWriteU32(
         &payload[0],
@@ -913,28 +910,4 @@ bool BL_ProtocolProcessPacket(
         response);
 
     return true;
-}
-
-static uint32_t BL_ProtocolGetCapabilities(void)
-{
-    switch (BL_TransportGetType())
-    {
-        case BL_TRANSPORT_UART:
-            return BL_CAPABILITY_UART;
-
-        case BL_TRANSPORT_CAN:
-            return BL_CAPABILITY_CAN;
-
-        case BL_TRANSPORT_SPI:
-            return BL_CAPABILITY_SPI;
-
-        case BL_TRANSPORT_I2C:
-            return BL_CAPABILITY_I2C;
-
-        case BL_TRANSPORT_USB:
-            return BL_CAPABILITY_USB;
-
-        default:
-            return 0UL;
-    }
 }

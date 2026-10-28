@@ -29,6 +29,7 @@ extern "C" {
 #define BOARD_SW2           (2U)
 
 bool Board_Init(void);
+void Board_Reset(void);
 
 uint32_t Board_GetSystemClock(void);
 

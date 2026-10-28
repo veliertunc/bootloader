@@ -1,35 +1,42 @@
-from bl_protocol import BootloaderProtocol
+from __future__ import annotations
 
-from bl_spi_transport import \
-    SPITransport
+import argparse
+from pathlib import Path
 
-from bl_spidev_backend import \
-    LinuxSPIBackend
+from bl_spi_backend import SPIBackend
+from bl_spi_transport import SPITransport
+from bl_spidev_backend import LinuxSPIBackend
+from bl_protocol import BootloaderError
+from bl_update import update
 
-backend = LinuxSPIBackend(
-    bus=0,
-    device=0,
-    speed_hz=1000000)
 
-transport = SPITransport(
-    backend)
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Update firmware over SPI")
+    parser.add_argument("--image", required=True, help="application_image.bin")
+    parser.add_argument("--bus", type=int, default=0)
+    parser.add_argument("--device", type=int, default=0)
+    parser.add_argument("--speed", type=int, default=1_000_000)
+    args = parser.parse_args()
 
-transport.open()
+    image_path = Path(args.image)
+    if not image_path.is_file():
+        parser.error(f"image file not found: {image_path}")
 
-protocol = BootloaderProtocol(
-    transport)
+    backend: SPIBackend = LinuxSPIBackend(
+        bus=args.bus,
+        device=args.device,
+        speed_hz=args.speed,
+    )
+    try:
+        update(
+            port=None,
+            image_path=image_path,
+            transport=SPITransport(backend),
+        )
+        return 0
+    except (BootloaderError, OSError, ValueError) as exc:
+        parser.exit(1, f"Update failed: {exc}\n")
 
-protocol.connect()
 
-protocol.get_info()
-
-protocol.erase()
-
-protocol.write_file(
-    "application.bin")
-
-protocol.verify()
-
-protocol.run_application()
-
-transport.close()
+if __name__ == "__main__":
+    raise SystemExit(main())

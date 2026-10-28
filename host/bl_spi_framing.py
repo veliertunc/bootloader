@@ -31,7 +31,7 @@ def decode_frame(
         frame: bytes) -> bytes:
 
     if len(frame) < 12:
-        raise RuntimeError(
+        raise ValueError(
             "Frame too short")
 
     magic, length = \
@@ -40,7 +40,7 @@ def decode_frame(
             frame[:8])
 
     if magic != SPI_MAGIC:
-        raise RuntimeError(
+        raise ValueError(
             "Invalid magic")
 
     payload = frame[
@@ -61,7 +61,7 @@ def decode_frame(
         zlib.crc32(payload)
 
     if received_crc != calculated_crc:
-        raise RuntimeError(
+        raise ValueError(
             "CRC mismatch")
 
     return payload

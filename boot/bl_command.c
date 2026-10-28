@@ -6,6 +6,8 @@
 #include "driverlib/sysctl.h"
 
 #include "bl_context.h"
+#include "bl_config.h"
+#include "bl_transport.h"
 #include "bl_flash.h"
 #include "bl_image.h"
 #include "bl_jump.h"
@@ -193,8 +195,11 @@ static BL_CommandStatus_t BL_CommandGetInfo(
      */
     BL_CommandWriteU32(
         &response->payload[20],
-        (1UL << BL_TRANSPORT_UART) |
-        (1UL << BL_TRANSPORT_CAN));
+        (1UL << BL_TRANSPORT_RS232) |
+        (1UL << BL_TRANSPORT_RS485) |
+        (1UL << BL_TRANSPORT_SPI) |
+        (1UL << BL_TRANSPORT_I2C) |
+        (1UL << BL_TRANSPORT_ETHERNET));
 
     return BL_COMMAND_STATUS_OK;
 }

@@ -14,38 +14,6 @@ void BL_ContextInit(void)
 
 void BL_ContextReset(void)
 {
-    bool active;
-
-    active =
-        g_Context.active;
-
-    memset(
-        &g_Context,
-        0,
-        sizeof(g_Context));
-
-    g_Context.active =
-        active;
-}
-
-void BL_ContextReset(void)
-{
-    bool active;
-
-    active =
-        g_Context.active;
-
-    memset(
-        &g_Context,
-        0,
-        sizeof(g_Context));
-
-    g_Context.active =
-        active;
-}
-
-void BL_ContextReset(void)
-{
     memset(
         &g_Context,
         0,

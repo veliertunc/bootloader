@@ -3,8 +3,10 @@ from __future__ import annotations
 import struct
 import time
 from dataclasses import dataclass
+from bl_transport import BootloaderTransport
 
 import serial
+from bl_ethernet_link import EthernetUDPLink
 
 
 # ---------------------------------------------------------------------------
@@ -230,15 +232,20 @@ def decode_packet(data: bytes) -> Packet:
 class BootloaderProtocol:
     def __init__(
         self,
-        port: str,
+        port: str | BootloaderTransport | None = None,
         baudrate: int = 115200,
         timeout: float = 1.0,
+        ethernet_host: str | None = None,
+        ethernet_port: int = 5000,
     ):
-        self.port = port
+        self.transport = port if port is not None and not isinstance(port, str) else None
+        self.port = port if isinstance(port, str) else None
         self.baudrate = baudrate
         self.timeout = timeout
+        self.ethernet_host = ethernet_host
+        self.ethernet_port = ethernet_port
 
-        self.serial: serial.Serial | None = None
+        self.serial: serial.Serial | EthernetUDPLink | None = None
 
         self.sequence = 0
 
@@ -247,6 +254,19 @@ class BootloaderProtocol:
     # -----------------------------------------------------------------------
 
     def open(self) -> None:
+        if self.transport is not None:
+            self.transport.open()
+            return
+        if self.ethernet_host is not None:
+            self.serial = EthernetUDPLink(
+                self.ethernet_host,
+                self.ethernet_port,
+                self.timeout,
+            )
+            self.serial.open()
+            return
+        if self.port is None:
+            raise ValueError("A serial port or Ethernet host is required")
         self.serial = serial.Serial(
             port=self.port,
             baudrate=self.baudrate,
@@ -261,6 +281,9 @@ class BootloaderProtocol:
         self.serial.reset_output_buffer()
 
     def close(self) -> None:
+        if self.transport is not None:
+            self.transport.close()
+            return
         if self.serial is not None:
             self.serial.close()
             self.serial = None
@@ -307,6 +330,9 @@ class BootloaderProtocol:
         """
         Synchronize on 0x55 0xAA and receive a complete packet.
         """
+
+        if self.transport is not None:
+            return decode_packet(self.transport.receive())
 
         if self.serial is None:
             raise BootloaderProtocolError(
@@ -362,7 +388,7 @@ class BootloaderProtocol:
         retries: int = 3,
     ) -> Packet:
 
-        if self.serial is None:
+        if self.serial is None and self.transport is None:
             raise BootloaderProtocolError(
                 "Serial port is not open"
             )
@@ -379,8 +405,12 @@ class BootloaderProtocol:
 
         for attempt in range(retries):
             try:
-                self.serial.write(packet)
-                self.serial.flush()
+                if self.transport is not None:
+                    self.transport.send(packet)
+                else:
+                    assert self.serial is not None
+                    self.serial.write(packet)
+                    self.serial.flush()
 
                 response = self._receive_packet()
 
@@ -411,6 +441,7 @@ class BootloaderProtocol:
             except (
                 BootloaderTimeout,
                 BootloaderProtocolError,
+                TimeoutError,
             ) as exc:
 
                 last_exception = exc
@@ -460,15 +491,15 @@ class BootloaderProtocol:
             b"",
         )
 
-        if len(response.payload) != 12:
+        if len(response.payload) != 4:
             raise BootloaderProtocolError(
                 "Invalid GET_VERSION response"
             )
 
-        major, minor, patch = struct.unpack(
-            "<3I",
-            response.payload,
-        )
+        version = struct.unpack("<I", response.payload)[0]
+        major = (version >> 24) & 0xFF
+        minor = (version >> 16) & 0xFF
+        patch = version & 0xFFFF
 
         return (
             major,
@@ -482,21 +513,25 @@ class BootloaderProtocol:
             b"",
         )
 
-        if len(response.payload) != 20:
+        if len(response.payload) != 24:
             raise BootloaderProtocolError(
                 "Invalid GET_INFO response"
             )
 
         (
+            _version,
             flash_start,
-            flash_end,
+            flash_size,
             app_start,
-            app_end,
             app_max_size,
+            capabilities,
         ) = struct.unpack(
-            "<5I",
+            "<6I",
             response.payload,
         )
+
+        flash_end = flash_start + flash_size - 1
+        app_end = app_start + app_max_size - 1
 
         return {
             "flash_start": flash_start,
@@ -504,6 +539,7 @@ class BootloaderProtocol:
             "app_start": app_start,
             "app_end": app_end,
             "app_max_size": app_max_size,
+            "capabilities": capabilities,
         }
 
     def erase(
@@ -553,10 +589,10 @@ class BootloaderProtocol:
             payload,
         )
 
-    def verify(self) -> Packet:
+    def verify(self, image_size: int, image_crc: int) -> Packet:
         return self.transact(
             CMD_VERIFY,
-            b"",
+            struct.pack("<2I", image_size, image_crc),
         )
 
     def abort(self) -> Packet:

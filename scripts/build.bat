@@ -4,7 +4,7 @@ setlocal EnableExtensions
 set PROJECT_ROOT=%~dp0..
 set BUILD_DIR=%PROJECT_ROOT%\build
 
-set TIVAWARE_DIR=C:/ti/TivaWare_C_Series-2.2.0.295
+set TIVAWARE_DIR=D:/TI/TivaWare_C_Series
 
 echo.
 echo ==========================================
@@ -32,7 +32,8 @@ cmake ^
     -B "%BUILD_DIR%" ^
     -G Ninja ^
     -DCMAKE_TOOLCHAIN_FILE="%PROJECT_ROOT%\cmake\arm-none-eabi.cmake" ^
-    -DTIVAWARE_DIR="%TIVAWARE_DIR%"
+    -DTIVAWARE_DIR="%TIVAWARE_DIR%" ^
+    -DBL_TRANSPORT=RS232
 
 if errorlevel 1 (
     echo ERROR: CMake configuration failed.

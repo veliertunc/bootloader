@@ -603,6 +603,7 @@ BL_ImageStatus_t BL_ImageValidate(void)
 
 bool BL_ImageIsValid(void)
 {
+    (void)BL_ImageValidate();
     return g_ImageValid;
 }
 

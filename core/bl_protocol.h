@@ -9,36 +9,12 @@
 /*
  * Bootloader protocol command identifiers.
  */
-typedef enum
-{
-    BL_CMD_CONNECT       = 0x01U,
-    BL_CMD_DISCONNECT    = 0x02U,
-    BL_CMD_GET_VERSION   = 0x03U,
-    BL_CMD_GET_INFO      = 0x04U,
-
-    BL_CMD_ERASE         = 0x10U,
-    BL_CMD_WRITE         = 0x11U,
-    BL_CMD_VERIFY        = 0x12U,
-    BL_CMD_ABORT         = 0x13U,
-
-    BL_CMD_RUN_APP       = 0x20U,
-    BL_CMD_RESET         = 0x21U
-} BL_Command_t;
+typedef uint8_t BL_Command_t;
 
 /*
  * Bootloader response identifiers.
  */
-typedef enum
-{
-    BL_CMD_ACK            = 0x80U,
-    BL_CMD_NACK           = 0x81U,
-    BL_CMD_BUSY           = 0x82U,
-    BL_CMD_CRC_ERROR      = 0x83U,
-    BL_CMD_SEQUENCE_ERROR = 0x84U,
-    BL_CMD_FLASH_ERROR    = 0x85U,
-    BL_CMD_VERIFY_ERROR   = 0x86U,
-    BL_CMD_INVALID_CMD    = 0x87U
-} BL_ResponseCommand_t;
+typedef uint8_t BL_ResponseCommand_t;
 
 /*
  * Action requested by a successfully processed command.
@@ -74,11 +50,11 @@ typedef enum
 /*
  * Capability bits returned by GET_INFO.
  */
-#define BL_CAPABILITY_UART    (1UL << 0U)
-#define BL_CAPABILITY_CAN     (1UL << 1U)
-#define BL_CAPABILITY_SPI     (1UL << 2U)
-#define BL_CAPABILITY_I2C     (1UL << 3U)
-#define BL_CAPABILITY_USB     (1UL << 4U)
+#define BL_CAPABILITY_RS232    (1UL << 0U)
+#define BL_CAPABILITY_RS485    (1UL << 1U)
+#define BL_CAPABILITY_SPI      (1UL << 2U)
+#define BL_CAPABILITY_I2C      (1UL << 3U)
+#define BL_CAPABILITY_ETHERNET (1UL << 4U)
 
 /*
  * GET_INFO response.

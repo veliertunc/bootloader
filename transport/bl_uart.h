@@ -62,6 +62,11 @@ bool BL_UART_Transmit(
     const uint8_t *buffer,
     uint32_t length);
 
+bool BL_UART_Receive(
+    uint8_t *buffer,
+    uint32_t bufferSize,
+    uint32_t *receivedLength);
+
 /**
  * @brief Check whether UART activity is available.
  *

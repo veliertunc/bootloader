@@ -29,15 +29,6 @@
  * --------------------------------------------------------------------------
  */
 
-static void BL_TransportPacketizerStart(
-    BL_TransportPacketizer_t *packetizer)
-{
-    packetizer->length = 0U;
-    packetizer->expectedLength = 0U;
-    packetizer->state =
-        BL_PACKETIZER_STATE_RECEIVING;
-}
-
 /*
  * --------------------------------------------------------------------------
  * Public API
